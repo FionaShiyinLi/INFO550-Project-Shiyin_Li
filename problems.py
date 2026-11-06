@@ -6,107 +6,111 @@ import numpy as np
 import cv2
 
 class Game:
-    def __init__(self, problem, pZero, pOne,verbose=True):
+    def __init__(self, problem,player,verbose=True):
       self.problem = problem      
-      self.players = [pZero,pOne]   
+      self.player = player
       self.verbose = verbose   
       if self.verbose:
-         self.problem.showState()               
+         self.problem.showState()
     def playGame(self):
-      pCur=0
       while self.problem.isTerminal()==False:           
-         move = self.players[pCur].getMove(self.problem)           
+         move = self.player.getMove(self.problem)
          self.problem.doMove(move)
          if self.verbose:
             self.problem.showState()
             print(f"Move {self.problem.ticks}:")
             print(self.problem.state)
-         pCur = np.abs(pCur-1)
-        
-      wIndex = self.problem.getWinner()
-      winner = self.players[wIndex]
-      if wIndex == -1:
-         winner = "DRAW"
-      #display final state
-      print(f"The Winner is {winner} ({wIndex})!")
+
+      print(f"Game Over! Food eaten: {self.problem.score}")
       if self.verbose:
-         self.problem.showState(4000)
-      return wIndex
+         self.problem.showState(1500)
+      return self.problem.score
               
-class TicTacToe:
+class Snake:
    def __init__(self):
-      self.state = np.zeros((3,3))      
-      self.ticks=-1      
+      self.state = ((0, 0), (1, 1), (1, 0))
+      self.ticks = 0
+      self.score = 0
+      self.stepsWithoutFood = 0
+
    def getLegalMoves(self, state=None):
       if state is None:
          state = self.state
+      food, head = state[0], state[1]
       moves = []
-      mark = 1
-      if np.sum(np.abs(state))%2!=0:
-         mark = -1       
-      for i in range(state.shape[0]):
-         for j in range(state.shape[1]):
-            if state[i,j]==0:
-               moves.append((mark,(i,j)))
-      return moves             
+      for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+         newHead = (head[0] + dr, head[1] + dc)
+
+         if not (0 <= newHead[0] < 3 and 0 <= newHead[1] < 3):
+            continue
+
+         if len(state) > 2 and newHead == state[2]:
+            continue
+
+         body = state[2:] if newHead == food else state[2:-1]
+         if newHead not in body:
+            moves.append((dr, dc))
+      return moves
+
    def getSuccessor(self, move, state):
-      mark = move[0]
-      loc = move[1]
-      state[loc] = mark
-      return state
+      food, head = state[0], state[1]
+      newHead = (head[0] + move[0], head[1] + move[1])
+
+      if newHead == food:
+         snake = (newHead,) + state[1:]
+         empty = [(r, c) for r in range(3) for c in range(3)
+                  if (r, c) not in snake]
+         newFood = empty[np.random.randint(len(empty))] if empty else None
+      else:
+         snake = (newHead,) + state[1:-1]
+         newFood = food
+      return (newFood,) + snake
+
    def doMove(self,move):
-      self.state = self.getSuccessor(move,self.state)
-      self.ticks+=1
+      oldFood = self.state[0]
+      self.state = self.getSuccessor(move, self.state)
+      self.ticks += 1
+
+      if self.state[1] == oldFood:
+         self.score += 1
+         self.stepsWithoutFood = 0
+      else:
+         self.stepsWithoutFood += 1
+
    def isTerminal(self, state=None):
       if state is None:
-         state = self.state         
-      terminal = False
-      val = self.evalTerminal(state)      
-      if val ==0 and np.sum(np.abs(state))==9:
-         terminal = True
-      if val!=0:
-         terminal = True
-      return terminal
-   def evalTerminal(self, state=None):
-      if state is None:
          state = self.state
-      val = 0      
-      
-      pZeroWins = [np.max(np.sum(state,0))==3,np.max(np.sum(state,1))==3,np.trace(state)==3,np.trace(state[:,::-1])==3]
-      pOneWins = [np.min(np.sum(state,0))==-3,np.min(np.sum(state,1))==-3,np.trace(state)==-3,np.trace(state[:,::-1])==-3]
 
-      if np.any(pZeroWins):
-         val = 1
-      if np.any(pOneWins):
-         val = -1
-      return val
-   def getWinner(self, state=None):
-      if state is None:
-         state = self.state
-      val = self.evalTerminal(state)
-      if val==1:
-         return 0 
-      elif val==-1:
-         return 1
-      else:
-         return -1
+      return (state[0] is None or
+              self.stepsWithoutFood >= 18 or
+              len(self.getLegalMoves(state)) == 0)
+
    def showState(self, ms = 1000,state=None):
       if state is None:
-         state = self.state  
+         state = self.state
 
-      screen = np.zeros((150,150)).astype(np.uint8)         
-      screen = cv2.line(screen,(0,49),(149,49),255) 
-      screen = cv2.line(screen,(0,99),(149,99),255)
-      screen = cv2.line(screen,(49,0),(49,149),255) 
-      screen = cv2.line(screen,(99,0),(99,149),255)
+      screen = np.zeros((150, 150, 3), dtype=np.uint8)
 
-      for i in range(state.shape[0]):
-         for j in range(state.shape[1]):
-            if state[i,j]==1:
-               screen = cv2.line(screen,(5 +j*50,5+i*50),(44+j*50,44+i*50),255,2,cv2.LINE_AA) 
-               screen = cv2.line(screen,(44+j*50,5+i*50),(5 +j*50,44+i*50),255,2,cv2.LINE_AA) 
-            if state[i,j]==-1:
-               screen = cv2.circle(screen, (25 +j*50,25+i*50), 20, 255, 2,cv2.LINE_AA) 
-               
-      cv2.imshow('TicTacToe',screen)
+      # Snake: red
+      for r, c in state[1:]:
+         cv2.rectangle(screen, (c * 50 + 1, r * 50 + 1),
+                       (c * 50 + 48, r * 50 + 48), (0, 0, 255), -1)
+
+      # Food: yellow
+      if state[0] is not None:
+         r, c = state[0]
+         cv2.rectangle(screen, (c * 50 + 1, r * 50 + 1),
+                       (c * 50 + 48, r * 50 + 48), (0, 255, 255), -1)
+
+      cv2.imshow('Snake', screen)
       cv2.waitKey(ms)
+
+
+class RandomPlayer:
+   def getMove(self, problem):
+      moves = problem.getLegalMoves()
+      return moves[np.random.randint(len(moves))]
+
+
+game = Game(Snake(), RandomPlayer())
+game.playGame()
