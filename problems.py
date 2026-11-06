@@ -1,9 +1,9 @@
 '''
 This file will contain your the code for your problems. 
 '''
-
 import numpy as np
 import cv2
+from algorithms import RandomAgent
 
 class Game:
     def __init__(self, problem,player,verbose=True):
@@ -106,11 +106,5 @@ class Snake:
       cv2.waitKey(ms)
 
 
-class RandomPlayer:
-   def getMove(self, problem):
-      moves = problem.getLegalMoves()
-      return moves[np.random.randint(len(moves))]
-
-
-game = Game(Snake(), RandomPlayer())
+game = Game(Snake(), RandomAgent())
 game.playGame()
